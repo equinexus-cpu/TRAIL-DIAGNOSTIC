@@ -2,10 +2,9 @@
 // CONFIGURATION
 // ============================================================
 
-// IMPORTANT: Replace this with your deployed Apps Script Web App URL.
 // Steps: Apps Script → Deploy → New Deployment → Web App
 //        Execute as: Me | Who has access: Anyone → Deploy → Copy URL
-const BACKEND_URL = 'https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec';
+const BACKEND_URL = 'https://script.google.com/a/macros/equinexuspartners.com/s/AKfycbylkj0sQRf1n3Lgmi8aJDv6wrtuLTpfXQjWkbL6jg4B9sUXD3NdSK5-qFc29JhDfmAH/exec';
 
 // ============================================================
 // SURVEY DATA
