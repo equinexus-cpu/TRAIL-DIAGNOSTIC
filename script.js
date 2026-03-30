@@ -297,7 +297,7 @@ function prevSection(from) {
 }
 
 // ============================================================
-// SUBMIT SURVEY
+// SUBMIT SURVEY — FIXED: uses no-cors to bypass GAS redirect block
 // ============================================================
 
 async function submitSurvey() {
@@ -322,45 +322,34 @@ async function submitSurvey() {
   startLoadingAnimation();
 
   try {
-    const response = await fetch(BACKEND_URL, {
+    // FIX: mode:'no-cors' bypasses the CORS block caused by GAS's 302 redirect.
+    // With no-cors we cannot read the response body, so the report URL is
+    // delivered via email instead — which the backend already does.
+    await fetch(BACKEND_URL, {
       method: 'POST',
+      mode: 'no-cors',
       headers: {
-        // text/plain avoids CORS preflight — required for Apps Script Web Apps
-        'Content-Type': 'text/plain'
+        'Content-Type': 'text/plain'   // text/plain avoids CORS preflight
       },
       body: JSON.stringify(data)
     });
 
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-
-    const result = await response.json();
-
-    if (result.success) {
-      showSuccess(result, data.email);
-    } else {
-      showErrorMessage(result.error || 'Unknown error occurred');
-    }
+    // Request went through — show email-delivery success screen
+    showSuccessEmailOnly(data.email);
 
   } catch (error) {
     console.error('Submission error:', error);
-    
-    // User-friendly error messages
-    let errorMsg = 'We encountered an issue generating your report. ';
-    
+
+    let errorMsg = 'We encountered an issue submitting your responses. ';
+
     if (error.message.includes('Failed to fetch')) {
       errorMsg += 'Please check your internet connection and try again. ';
-    } else if (error.message.includes('429')) {
-      errorMsg += 'Our AI service is processing many requests. Please wait 2 minutes and try again. ';
-    } else if (error.message.includes('500')) {
-      errorMsg += 'Something went wrong on our end. Your responses are saved. Please try again or ';
     } else {
       errorMsg += 'Please try again in a few minutes, or ';
     }
-    
+
     errorMsg += 'contact delivery@equinexuspartners.com if this persists.';
-    
+
     showErrorMessage(errorMsg);
   } finally {
     stopLoadingAnimation();
@@ -416,30 +405,34 @@ function stopLoadingAnimation() {
 }
 
 // ============================================================
-// SUCCESS & ERROR DISPLAY
+// SUCCESS DISPLAY — FIXED: email-delivery mode (no-cors can't return URL)
 // ============================================================
 
-function showSuccess(result, userEmail) {
+function showSuccessEmailOnly(userEmail) {
   // Hide all sections
   document.querySelectorAll('.section-card').forEach(s => s.classList.remove('active'));
-  document.getElementById('phaseIndicator').style.display = 'none';
+  const phaseIndicator = document.getElementById('phaseIndicator');
+  if (phaseIndicator) phaseIndicator.style.display = 'none';
 
-  // Populate result card
-  document.getElementById('result-sdi').textContent = result.sdi || '—';
-  document.getElementById('result-level-label').textContent = result.debtLevel || 'Report Generated';
-  document.getElementById('result-arch').textContent = result.archetype ? `Archetype: ${result.archetype}` : '';
+  // Populate result card for email-delivery mode
+  document.getElementById('result-sdi').textContent = '✓';
+  document.getElementById('result-level-label').textContent = 'Report Submitted';
+  document.getElementById('result-arch').textContent = 'Your diagnostic is being processed';
 
   // Email confirmation message
-  const emailMsg = `Your full report has been sent to ${userEmail} and is available at the link below.`;
+  const emailMsg = `Your full TRAIL Report will be sent to ${userEmail} within 1–2 minutes. Please check your inbox (and spam folder) — the report link will be in that email.`;
   document.getElementById('result-email-sent').textContent = emailMsg;
 
+  // Hide the direct report link — URL is not readable via no-cors
   const reportLink = document.getElementById('reportLink');
-  reportLink.href = result.reportUrl;
-  reportLink.textContent = 'View Your Full Report →';
+  if (reportLink) {
+    reportLink.style.display = 'none';
+  }
 
   // Show result card
-  document.getElementById('resultCard').classList.add('active');
-  document.getElementById('resultCard').scrollIntoView({ behavior: 'smooth' });
+  const resultCard = document.getElementById('resultCard');
+  resultCard.classList.add('active');
+  resultCard.scrollIntoView({ behavior: 'smooth' });
 }
 
 function showErrorMessage(message) {
