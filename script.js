@@ -2,9 +2,10 @@
 // CONFIGURATION
 // ============================================================
 
-// Steps: Apps Script → Deploy → New Deployment → Web App
+// Steps:Connecting Front-end and back-end
+// Apps Script → Deploy → New Deployment → Web App
 //        Execute as: Me | Who has access: Anyone → Deploy → Copy URL
-const BACKEND_URL = 'https://script.google.com/a/macros/equinexuspartners.com/s/AKfycbylkj0sQRf1n3Lgmi8aJDv6wrtuLTpfXQjWkbL6jg4B9sUXD3NdSK5-qFc29JhDfmAH/exec';
+const BACKEND_URL = 'https://script.google.com/macros/s/AKfycbw8Bn12qXcOqei4Ylf_fcgC9uZzyyFSMuHXmEWMlwj580eVCK038QkLkTvqjCDdOEJ1/exec';
 
 // ============================================================
 // SURVEY DATA
