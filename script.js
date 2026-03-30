@@ -5,7 +5,7 @@
 // Steps:Connecting Front-end and back-end
 // Apps Script → Deploy → New Deployment → Web App
 //        Execute as: Me | Who has access: Anyone → Deploy → Copy URL
-const BACKEND_URL = 'https://script.google.com/macros/s/AKfycbzG4guC7H3VIyQwKjadc9IPj_VSn4HZPOJI6YMRFuP4v5avuzOwpl8ITVyZ9DaOPsiJ/exec';
+const BACKEND_URL = 'https://script.google.com/macros/s/AKfycbyLtU32x66yNgAXj9vxxQs_JyQQEhyRqS7Tzm7CtX2VyxyV7jf-PVJ-tbxHyddw2xJG/exec';
 
 // ============================================================
 // SURVEY DATA
