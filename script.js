@@ -2,10 +2,7 @@
 // CONFIGURATION
 // ============================================================
 
-// Steps:Connecting Front-end and back-end
-// Apps Script → Deploy → New Deployment → Web App
-//        Execute as: Me | Who has access: Anyone → Deploy → Copy URL
-const BACKEND_URL = 'https://script.google.com/macros/s/AKfycbwfhBwekjcwmwYHyumapH7ZXy9VjSuXr-V4bvBJ3cZdryY-b-fTIZzCZ2hiZKzhwZ7A/exec';
+const BACKEND_URL = 'https://script.google.com/macros/s/AKfycbwKuXevzoCWV2MXXsrnNnFYaVltEElomV5Da7lpoCWWLHrANDMS8wKz48qZiZ2E2ynE/exec';
 
 // ============================================================
 // SURVEY DATA
@@ -177,45 +174,34 @@ function recordAnswer(qid, val) {
 // ============================================================
 
 function validateSection(sectionNum) {
-  const errorEl = document.getElementById(`err-${sectionNum}`);
-
   if (sectionNum === 0) {
-    // Validate intro fields
-    const name = document.getElementById('f-name').value.trim();
+    const name  = document.getElementById('f-name').value.trim();
     const email = document.getElementById('f-email').value.trim();
-    const role = document.getElementById('f-role').value.trim();
-    const org = document.getElementById('f-orgName').value.trim();
+    const role  = document.getElementById('f-role').value.trim();
+    const org   = document.getElementById('f-orgName').value.trim();
 
     if (!name || !email || !role || !org) {
       showError(sectionNum, 'Please complete all required fields (Name, Email, Role, Organisation)');
       return false;
     }
-
-    // Email format validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       showError(sectionNum, 'Please enter a valid email address');
       return false;
     }
-
     hideError(sectionNum);
     return true;
   }
 
   if (sectionNum >= 1 && sectionNum <= 6) {
-    // Validate dimension questions
     const dim = DIMENSIONS[sectionNum - 1];
     const unanswered = dim.questions.filter(q => !answers[q.id]);
 
     if (unanswered.length > 0) {
-      // Highlight unanswered questions
       unanswered.forEach(q => {
         const qBlock = document.getElementById(`qb-${q.id}`);
-        if (qBlock) {
-          qBlock.classList.add('highlight-error');
-        }
+        if (qBlock) qBlock.classList.add('highlight-error');
       });
-
       showError(
         sectionNum,
         `Please answer all ${unanswered.length} remaining question${unanswered.length > 1 ? 's' : ''} before continuing`
@@ -223,14 +209,10 @@ function validateSection(sectionNum) {
       return false;
     }
 
-    // Clear highlights
     dim.questions.forEach(q => {
       const qBlock = document.getElementById(`qb-${q.id}`);
-      if (qBlock) {
-        qBlock.classList.remove('highlight-error');
-      }
+      if (qBlock) qBlock.classList.remove('highlight-error');
     });
-
     hideError(sectionNum);
     return true;
   }
@@ -248,9 +230,7 @@ function showError(sectionNum, message) {
 
 function hideError(sectionNum) {
   const errorEl = document.getElementById(`err-${sectionNum}`);
-  if (errorEl) {
-    errorEl.style.display = 'none';
-  }
+  if (errorEl) errorEl.style.display = 'none';
 }
 
 // ============================================================
@@ -258,11 +238,10 @@ function hideError(sectionNum) {
 // ============================================================
 
 function updateProgress() {
-  const total = 8; // 0-7
+  const total = 8;
   const pct = (currentSection / (total - 1)) * 100;
   document.getElementById('progressBar').style.width = pct + '%';
 
-  // Phase indicator
   for (let i = 0; i < 8; i++) {
     const el = document.getElementById('ph' + i);
     if (!el) continue;
@@ -282,78 +261,120 @@ function showSection(n) {
 }
 
 function nextSection(from) {
-  // Validate before moving forward
-  if (!validateSection(from)) {
-    return;
-  }
-
+  if (!validateSection(from)) return;
   showSection(from + 1);
 }
 
 function prevSection(from) {
-  if (from > 0) {
-    showSection(from - 1);
-  }
+  if (from > 0) showSection(from - 1);
 }
 
 // ============================================================
-// SUBMIT SURVEY — FIXED: uses no-cors to bypass GAS redirect block
+// SUBMIT SURVEY
 // ============================================================
 
 async function submitSurvey() {
   const data = {
-    name: document.getElementById('f-name').value.trim(),
-    email: document.getElementById('f-email').value.trim(),
-    role: document.getElementById('f-role').value.trim(),
-    orgName: document.getElementById('f-orgName').value.trim(),
-    country: document.getElementById('f-country').value.trim(),
-    sector: document.getElementById('f-sector').value,
-    orgSize: document.getElementById('f-orgSize').value,
+    name:      document.getElementById('f-name').value.trim(),
+    email:     document.getElementById('f-email').value.trim(),
+    role:      document.getElementById('f-role').value.trim(),
+    orgName:   document.getElementById('f-orgName').value.trim(),
+    country:   document.getElementById('f-country').value.trim(),
+    sector:    document.getElementById('f-sector').value,
+    orgSize:   document.getElementById('f-orgSize').value,
     challenge: document.getElementById('f-challenge').value.trim(),
-    answers: answers
+    answers:   answers
   };
 
-  // Show loading overlay
   document.getElementById('loadingOverlay').classList.add('active');
   document.getElementById('submitBtn').disabled = true;
   hideError(7);
-
-  // Start loading animation
   startLoadingAnimation();
 
   try {
-    // FIX: mode:'no-cors' bypasses the CORS block caused by GAS's 302 redirect.
-    // With no-cors we cannot read the response body, so the report URL is
-    // delivered via email instead — which the backend already does.
-    await fetch(BACKEND_URL, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: {
-        'Content-Type': 'text/plain'   // text/plain avoids CORS preflight
-      },
-      body: JSON.stringify(data)
-    });
+    const result = await postViaIframe(data);
 
-    // Request went through — show email-delivery success screen
-    showSuccessEmailOnly(data.email);
-
+    if (result.success) {
+      showSuccess(result, data.email);
+    } else {
+      showErrorMessage(result.error || 'Unknown error. Please try again.');
+    }
   } catch (error) {
     console.error('Submission error:', error);
-
-    let errorMsg = 'We encountered an issue submitting your responses. ';
-
-    if (error.message.includes('Failed to fetch')) {
-      errorMsg += 'Please check your internet connection and try again. ';
-    } else {
-      errorMsg += 'Please try again in a few minutes, or ';
-    }
-
-    errorMsg += 'contact delivery@equinexuspartners.com if this persists.';
-
-    showErrorMessage(errorMsg);
+    showErrorMessage(
+      'We encountered an issue generating your report. Please try again or contact delivery@equinexuspartners.com if this persists.'
+    );
   } finally {
     stopLoadingAnimation();
   }
+}
+
+// ============================================================
+// IFRAME BRIDGE
+// Why: fetch() fails on GAS because Google redirects the POST
+// (302) and browsers block CORS on redirected requests.
+// How: We POST a form into a hidden iframe. GAS follows its own
+// redirect internally, runs doPost(), then the updated doGet()
+// (triggered by GAS's redirect back) returns a tiny HTML page
+// that calls window.parent.postMessage(result) back to us here.
+// This is the only browser-native way to get a response back
+// from GAS without a proxy server.
+// ============================================================
+
+function postViaIframe(data) {
+  return new Promise((resolve, reject) => {
+    // Hidden iframe to catch the GAS response page
+    const iframe = document.createElement('iframe');
+    iframe.name = 'gas_bridge_frame';
+    iframe.style.cssText = 'display:none;width:0;height:0;border:0;position:absolute;left:-9999px;top:-9999px';
+    document.body.appendChild(iframe);
+
+    // Form that POSTs into that iframe
+    // ?callback=postmessage tells doPost in code.gs to wrap its
+    // JSON result in a postMessage HTML page instead of plain JSON
+    const form = document.createElement('form');
+    form.method  = 'POST';
+    form.action  = BACKEND_URL + '?callback=postmessage';
+    form.target  = 'gas_bridge_frame';
+    form.style.display = 'none';
+
+    // All survey data packed into one hidden field
+    const input = document.createElement('input');
+    input.type  = 'hidden';
+    input.name  = 'payload';
+    input.value = JSON.stringify(data);
+    form.appendChild(input);
+    document.body.appendChild(form);
+
+    // 120s timeout — AI generation takes ~30-60s
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error('Timed out waiting for report. Your responses are saved — please check your email shortly.'));
+    }, 120000);
+
+    function onMessage(evt) {
+      // Only accept messages from Google domains
+      if (typeof evt.data !== 'string') return;
+      if (!evt.origin.includes('google.com') && !evt.origin.includes('googleusercontent.com')) return;
+
+      let parsed;
+      try { parsed = JSON.parse(evt.data); } catch (e) { return; }
+      if (typeof parsed.success === 'undefined') return; // not our message
+
+      cleanup();
+      resolve(parsed);
+    }
+
+    function cleanup() {
+      clearTimeout(timer);
+      window.removeEventListener('message', onMessage);
+      try { document.body.removeChild(iframe); } catch (e) {}
+      try { document.body.removeChild(form);   } catch (e) {}
+    }
+
+    window.addEventListener('message', onMessage);
+    form.submit();
+  });
 }
 
 // ============================================================
@@ -361,7 +382,7 @@ async function submitSurvey() {
 // ============================================================
 
 function startLoadingAnimation() {
-  const steps = ['lstep-1', 'lstep-2', 'lstep-3', 'lstep-4', 'lstep-5', 'lstep-6', 'lstep-7'];
+  const steps = ['lstep-1','lstep-2','lstep-3','lstep-4','lstep-5','lstep-6','lstep-7'];
   const messages = [
     'Saving your responses...',
     'Scoring six TRAIL dimensions...',
@@ -375,64 +396,47 @@ function startLoadingAnimation() {
   let stepIndex = 0;
   window.loadingInterval = setInterval(() => {
     if (stepIndex > 0) {
-      const prevStep = document.getElementById(steps[stepIndex - 1]);
-      if (prevStep) {
-        prevStep.classList.add('done');
-        prevStep.classList.remove('active');
-      }
+      const prev = document.getElementById(steps[stepIndex - 1]);
+      if (prev) { prev.classList.add('done'); prev.classList.remove('active'); }
     }
-
     if (stepIndex < steps.length) {
-      const currentStep = document.getElementById(steps[stepIndex]);
-      if (currentStep) {
-        currentStep.classList.add('active');
-      }
+      const cur = document.getElementById(steps[stepIndex]);
+      if (cur) cur.classList.add('active');
       document.getElementById('loadingStatus').textContent = messages[stepIndex];
       stepIndex++;
     }
-
-    if (stepIndex >= steps.length) {
-      clearInterval(window.loadingInterval);
-    }
-  }, 5000); // 5 seconds per step
+    if (stepIndex >= steps.length) clearInterval(window.loadingInterval);
+  }, 5000);
 }
 
 function stopLoadingAnimation() {
-  if (window.loadingInterval) {
-    clearInterval(window.loadingInterval);
-  }
+  if (window.loadingInterval) clearInterval(window.loadingInterval);
   document.getElementById('loadingOverlay').classList.remove('active');
 }
 
 // ============================================================
-// SUCCESS DISPLAY — FIXED: email-delivery mode (no-cors can't return URL)
+// SUCCESS & ERROR DISPLAY — original behaviour fully restored
 // ============================================================
 
-function showSuccessEmailOnly(userEmail) {
-  // Hide all sections
+function showSuccess(result, userEmail) {
   document.querySelectorAll('.section-card').forEach(s => s.classList.remove('active'));
   const phaseIndicator = document.getElementById('phaseIndicator');
   if (phaseIndicator) phaseIndicator.style.display = 'none';
 
-  // Populate result card for email-delivery mode
-  document.getElementById('result-sdi').textContent = '✓';
-  document.getElementById('result-level-label').textContent = 'Report Submitted';
-  document.getElementById('result-arch').textContent = 'Your diagnostic is being processed';
+  document.getElementById('result-sdi').textContent         = result.sdi || '—';
+  document.getElementById('result-level-label').textContent = result.debtLevel || 'Report Generated';
+  document.getElementById('result-arch').textContent        = result.archetype ? `Archetype: ${result.archetype}` : '';
 
-  // Email confirmation message
-  const emailMsg = `Your full TRAIL Report will be sent to ${userEmail} within 1–2 minutes. Please check your inbox (and spam folder) — the report link will be in that email.`;
-  document.getElementById('result-email-sent').textContent = emailMsg;
+  document.getElementById('result-email-sent').textContent =
+    `Your full report has been sent to ${userEmail} and is available at the link below.`;
 
-  // Hide the direct report link — URL is not readable via no-cors
   const reportLink = document.getElementById('reportLink');
-  if (reportLink) {
-    reportLink.style.display = 'none';
-  }
+  reportLink.href        = result.reportUrl;
+  reportLink.textContent = 'View Your Full Report →';
+  reportLink.style.display = '';
 
-  // Show result card
-  const resultCard = document.getElementById('resultCard');
-  resultCard.classList.add('active');
-  resultCard.scrollIntoView({ behavior: 'smooth' });
+  document.getElementById('resultCard').classList.add('active');
+  document.getElementById('resultCard').scrollIntoView({ behavior: 'smooth' });
 }
 
 function showErrorMessage(message) {
@@ -444,6 +448,5 @@ function showErrorMessage(message) {
 // INITIALIZATION
 // ============================================================
 
-// Build sections and initialize on page load
 buildSections();
 updateProgress();
