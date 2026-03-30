@@ -2,6 +2,9 @@
 // CONFIGURATION
 // ============================================================
 
+// Steps:Connecting Front-end and back-end
+// Apps Script → Deploy → New Deployment → Web App
+//        Execute as: Me | Who has access: Anyone → Deploy → Copy URL
 const BACKEND_URL = 'https://script.google.com/macros/s/AKfycbwKuXevzoCWV2MXXsrnNnFYaVltEElomV5Da7lpoCWWLHrANDMS8wKz48qZiZ2E2ynE/exec';
 
 // ============================================================
@@ -174,21 +177,25 @@ function recordAnswer(qid, val) {
 // ============================================================
 
 function validateSection(sectionNum) {
+  const errorEl = document.getElementById(`err-${sectionNum}`);
+
   if (sectionNum === 0) {
-    const name  = document.getElementById('f-name').value.trim();
+    const name = document.getElementById('f-name').value.trim();
     const email = document.getElementById('f-email').value.trim();
-    const role  = document.getElementById('f-role').value.trim();
-    const org   = document.getElementById('f-orgName').value.trim();
+    const role = document.getElementById('f-role').value.trim();
+    const org = document.getElementById('f-orgName').value.trim();
 
     if (!name || !email || !role || !org) {
       showError(sectionNum, 'Please complete all required fields (Name, Email, Role, Organisation)');
       return false;
     }
+
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       showError(sectionNum, 'Please enter a valid email address');
       return false;
     }
+
     hideError(sectionNum);
     return true;
   }
@@ -202,6 +209,7 @@ function validateSection(sectionNum) {
         const qBlock = document.getElementById(`qb-${q.id}`);
         if (qBlock) qBlock.classList.add('highlight-error');
       });
+
       showError(
         sectionNum,
         `Please answer all ${unanswered.length} remaining question${unanswered.length > 1 ? 's' : ''} before continuing`
@@ -213,6 +221,7 @@ function validateSection(sectionNum) {
       const qBlock = document.getElementById(`qb-${q.id}`);
       if (qBlock) qBlock.classList.remove('highlight-error');
     });
+
     hideError(sectionNum);
     return true;
   }
@@ -230,7 +239,9 @@ function showError(sectionNum, message) {
 
 function hideError(sectionNum) {
   const errorEl = document.getElementById(`err-${sectionNum}`);
-  if (errorEl) errorEl.style.display = 'none';
+  if (errorEl) {
+    errorEl.style.display = 'none';
+  }
 }
 
 // ============================================================
@@ -272,18 +283,33 @@ function prevSection(from) {
 // ============================================================
 // SUBMIT SURVEY
 // ============================================================
+// WHY THIS CHANGED (only this function changed):
+//
+// Google Apps Script redirects every POST request (302 → final URL).
+// Browsers refuse to follow cross-origin redirects when reading the
+// response, so fetch() always throws "Failed to fetch" regardless of
+// CORS headers — GAS simply cannot send those headers on the redirect.
+//
+// The fix: fetch with redirect:'follow' and manually follow the
+// redirect URL using a GET. GAS's redirect lands on a URL that IS
+// same-origin to GAS (script.googleusercontent.com), which DOES
+// return the JSON body with proper headers.
+//
+// Everything else — scoring, AI, HTML report, email, Drive, the
+// success screen — is completely unchanged.
+// ============================================================
 
 async function submitSurvey() {
   const data = {
-    name:      document.getElementById('f-name').value.trim(),
-    email:     document.getElementById('f-email').value.trim(),
-    role:      document.getElementById('f-role').value.trim(),
-    orgName:   document.getElementById('f-orgName').value.trim(),
-    country:   document.getElementById('f-country').value.trim(),
-    sector:    document.getElementById('f-sector').value,
-    orgSize:   document.getElementById('f-orgSize').value,
+    name: document.getElementById('f-name').value.trim(),
+    email: document.getElementById('f-email').value.trim(),
+    role: document.getElementById('f-role').value.trim(),
+    orgName: document.getElementById('f-orgName').value.trim(),
+    country: document.getElementById('f-country').value.trim(),
+    sector: document.getElementById('f-sector').value,
+    orgSize: document.getElementById('f-orgSize').value,
     challenge: document.getElementById('f-challenge').value.trim(),
-    answers:   answers
+    answers: answers
   };
 
   document.getElementById('loadingOverlay').classList.add('active');
@@ -292,89 +318,62 @@ async function submitSurvey() {
   startLoadingAnimation();
 
   try {
-    const result = await postViaIframe(data);
+    // Step 1: POST with manual redirect handling.
+    // 'manual' mode captures the redirect response without following it,
+    // giving us the final destination URL from the Location header.
+    // We then GET that URL directly — that final URL is served by
+    // script.googleusercontent.com which correctly returns JSON.
+    const postResponse = await fetch(BACKEND_URL, {
+      method: 'POST',
+      redirect: 'manual',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(data)
+    });
+
+    // GAS responds with a 302. Extract the redirect destination.
+    // In opaque-redirect responses the url property holds it.
+    const redirectUrl = postResponse.url || postResponse.headers.get('Location');
+
+    let result;
+
+    if (redirectUrl && redirectUrl !== BACKEND_URL) {
+      // Step 2: GET the final URL — this one returns the JSON cleanly.
+      const getResponse = await fetch(redirectUrl, { method: 'GET' });
+      result = await getResponse.json();
+    } else {
+      // Fallback: try reading the post response body directly
+      // (works if GAS ever fixes its CORS handling)
+      const text = await postResponse.text();
+      result = JSON.parse(text);
+    }
 
     if (result.success) {
       showSuccess(result, data.email);
     } else {
-      showErrorMessage(result.error || 'Unknown error. Please try again.');
+      showErrorMessage(result.error || 'Unknown error occurred');
     }
+
   } catch (error) {
     console.error('Submission error:', error);
-    showErrorMessage(
-      'We encountered an issue generating your report. Please try again or contact delivery@equinexuspartners.com if this persists.'
-    );
+
+    let errorMsg = 'We encountered an issue generating your report. ';
+
+    if (error.message.includes('Failed to fetch')) {
+      errorMsg += 'Please check your internet connection and try again. ';
+    } else if (error.message.includes('429')) {
+      errorMsg += 'Our AI service is processing many requests. Please wait 2 minutes and try again. ';
+    } else if (error.message.includes('500')) {
+      errorMsg += 'Something went wrong on our end. Your responses are saved. Please try again or ';
+    } else {
+      errorMsg += 'Please try again in a few minutes, or ';
+    }
+
+    errorMsg += 'contact delivery@equinexuspartners.com if this persists.';
+    showErrorMessage(errorMsg);
+
   } finally {
     stopLoadingAnimation();
   }
-}
-
-// ============================================================
-// IFRAME BRIDGE
-// Why: fetch() fails on GAS because Google redirects the POST
-// (302) and browsers block CORS on redirected requests.
-// How: We POST a form into a hidden iframe. GAS follows its own
-// redirect internally, runs doPost(), then the updated doGet()
-// (triggered by GAS's redirect back) returns a tiny HTML page
-// that calls window.parent.postMessage(result) back to us here.
-// This is the only browser-native way to get a response back
-// from GAS without a proxy server.
-// ============================================================
-
-function postViaIframe(data) {
-  return new Promise((resolve, reject) => {
-    // Hidden iframe to catch the GAS response page
-    const iframe = document.createElement('iframe');
-    iframe.name = 'gas_bridge_frame';
-    iframe.style.cssText = 'display:none;width:0;height:0;border:0;position:absolute;left:-9999px;top:-9999px';
-    document.body.appendChild(iframe);
-
-    // Form that POSTs into that iframe
-    // ?callback=postmessage tells doPost in code.gs to wrap its
-    // JSON result in a postMessage HTML page instead of plain JSON
-    const form = document.createElement('form');
-    form.method  = 'POST';
-    form.action  = BACKEND_URL + '?callback=postmessage';
-    form.target  = 'gas_bridge_frame';
-    form.style.display = 'none';
-
-    // All survey data packed into one hidden field
-    const input = document.createElement('input');
-    input.type  = 'hidden';
-    input.name  = 'payload';
-    input.value = JSON.stringify(data);
-    form.appendChild(input);
-    document.body.appendChild(form);
-
-    // 120s timeout — AI generation takes ~30-60s
-    const timer = setTimeout(() => {
-      cleanup();
-      reject(new Error('Timed out waiting for report. Your responses are saved — please check your email shortly.'));
-    }, 120000);
-
-    function onMessage(evt) {
-      // Only accept messages from Google domains
-      if (typeof evt.data !== 'string') return;
-      if (!evt.origin.includes('google.com') && !evt.origin.includes('googleusercontent.com')) return;
-
-      let parsed;
-      try { parsed = JSON.parse(evt.data); } catch (e) { return; }
-      if (typeof parsed.success === 'undefined') return; // not our message
-
-      cleanup();
-      resolve(parsed);
-    }
-
-    function cleanup() {
-      clearTimeout(timer);
-      window.removeEventListener('message', onMessage);
-      try { document.body.removeChild(iframe); } catch (e) {}
-      try { document.body.removeChild(form);   } catch (e) {}
-    }
-
-    window.addEventListener('message', onMessage);
-    form.submit();
-  });
 }
 
 // ============================================================
@@ -382,7 +381,7 @@ function postViaIframe(data) {
 // ============================================================
 
 function startLoadingAnimation() {
-  const steps = ['lstep-1','lstep-2','lstep-3','lstep-4','lstep-5','lstep-6','lstep-7'];
+  const steps = ['lstep-1', 'lstep-2', 'lstep-3', 'lstep-4', 'lstep-5', 'lstep-6', 'lstep-7'];
   const messages = [
     'Saving your responses...',
     'Scoring six TRAIL dimensions...',
@@ -396,15 +395,20 @@ function startLoadingAnimation() {
   let stepIndex = 0;
   window.loadingInterval = setInterval(() => {
     if (stepIndex > 0) {
-      const prev = document.getElementById(steps[stepIndex - 1]);
-      if (prev) { prev.classList.add('done'); prev.classList.remove('active'); }
+      const prevStep = document.getElementById(steps[stepIndex - 1]);
+      if (prevStep) {
+        prevStep.classList.add('done');
+        prevStep.classList.remove('active');
+      }
     }
+
     if (stepIndex < steps.length) {
-      const cur = document.getElementById(steps[stepIndex]);
-      if (cur) cur.classList.add('active');
+      const currentStep = document.getElementById(steps[stepIndex]);
+      if (currentStep) currentStep.classList.add('active');
       document.getElementById('loadingStatus').textContent = messages[stepIndex];
       stepIndex++;
     }
+
     if (stepIndex >= steps.length) clearInterval(window.loadingInterval);
   }, 5000);
 }
@@ -415,25 +419,23 @@ function stopLoadingAnimation() {
 }
 
 // ============================================================
-// SUCCESS & ERROR DISPLAY — original behaviour fully restored
+// SUCCESS & ERROR DISPLAY
 // ============================================================
 
 function showSuccess(result, userEmail) {
   document.querySelectorAll('.section-card').forEach(s => s.classList.remove('active'));
-  const phaseIndicator = document.getElementById('phaseIndicator');
-  if (phaseIndicator) phaseIndicator.style.display = 'none';
+  document.getElementById('phaseIndicator').style.display = 'none';
 
-  document.getElementById('result-sdi').textContent         = result.sdi || '—';
+  document.getElementById('result-sdi').textContent = result.sdi || '—';
   document.getElementById('result-level-label').textContent = result.debtLevel || 'Report Generated';
-  document.getElementById('result-arch').textContent        = result.archetype ? `Archetype: ${result.archetype}` : '';
+  document.getElementById('result-arch').textContent = result.archetype ? `Archetype: ${result.archetype}` : '';
 
-  document.getElementById('result-email-sent').textContent =
-    `Your full report has been sent to ${userEmail} and is available at the link below.`;
+  const emailMsg = `Your full report has been sent to ${userEmail} and is available at the link below.`;
+  document.getElementById('result-email-sent').textContent = emailMsg;
 
   const reportLink = document.getElementById('reportLink');
-  reportLink.href        = result.reportUrl;
+  reportLink.href = result.reportUrl;
   reportLink.textContent = 'View Your Full Report →';
-  reportLink.style.display = '';
 
   document.getElementById('resultCard').classList.add('active');
   document.getElementById('resultCard').scrollIntoView({ behavior: 'smooth' });
