@@ -2,10 +2,7 @@
 // CONFIGURATION
 // ============================================================
 
-// Steps:Connecting Front-end and back-end
-// Apps Script → Deploy → New Deployment → Web App
-//        Execute as: Me | Who has access: Anyone → Deploy → Copy URL
-const BACKEND_URL = 'https://script.google.com/macros/s/AKfycbwKuXevzoCWV2MXXsrnNnFYaVltEElomV5Da7lpoCWWLHrANDMS8wKz48qZiZ2E2ynE/exec';
+const BACKEND_URL = 'https://script.google.com/macros/s/AKfycbzPDV101S76LIshgxycOmLMTjhVP-a7BJKl1NMPVRwlYJnsE76mlELEOC89gn-cvUgl/exec';
 
 // ============================================================
 // SURVEY DATA
@@ -209,7 +206,6 @@ function validateSection(sectionNum) {
         const qBlock = document.getElementById(`qb-${q.id}`);
         if (qBlock) qBlock.classList.add('highlight-error');
       });
-
       showError(
         sectionNum,
         `Please answer all ${unanswered.length} remaining question${unanswered.length > 1 ? 's' : ''} before continuing`
@@ -239,9 +235,7 @@ function showError(sectionNum, message) {
 
 function hideError(sectionNum) {
   const errorEl = document.getElementById(`err-${sectionNum}`);
-  if (errorEl) {
-    errorEl.style.display = 'none';
-  }
+  if (errorEl) errorEl.style.display = 'none';
 }
 
 // ============================================================
@@ -283,20 +277,16 @@ function prevSection(from) {
 // ============================================================
 // SUBMIT SURVEY
 // ============================================================
-// WHY THIS CHANGED (only this function changed):
+// WHY GET INSTEAD OF POST:
+// GAS doPost always issues a 302 redirect. Browsers block reading
+// the response after a cross-origin redirect — no amount of CORS
+// headers on doPost fixes this because the headers are on the
+// redirect target, not the initial response the browser checks.
 //
-// Google Apps Script redirects every POST request (302 → final URL).
-// Browsers refuse to follow cross-origin redirects when reading the
-// response, so fetch() always throws "Failed to fetch" regardless of
-// CORS headers — GAS simply cannot send those headers on the redirect.
-//
-// The fix: fetch with redirect:'follow' and manually follow the
-// redirect URL using a GET. GAS's redirect lands on a URL that IS
-// same-origin to GAS (script.googleusercontent.com), which DOES
-// return the JSON body with proper headers.
-//
-// Everything else — scoring, AI, HTML report, email, Drive, the
-// success screen — is completely unchanged.
+// GAS doGet responds DIRECTLY with no redirect, so the browser
+// can read the response normally. We pass the survey payload as
+// a URL parameter. This is the standard workaround for GAS
+// cross-origin calls and requires no proxy.
 // ============================================================
 
 async function submitSurvey() {
@@ -318,34 +308,20 @@ async function submitSurvey() {
   startLoadingAnimation();
 
   try {
-    // Step 1: POST with manual redirect handling.
-    // 'manual' mode captures the redirect response without following it,
-    // giving us the final destination URL from the Location header.
-    // We then GET that URL directly — that final URL is served by
-    // script.googleusercontent.com which correctly returns JSON.
-    const postResponse = await fetch(BACKEND_URL, {
-      method: 'POST',
-      redirect: 'manual',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify(data)
+    // Encode the entire payload as a URL parameter.
+    // doGet in code.gs reads e.parameter.payload and processes it.
+    const payload = encodeURIComponent(JSON.stringify(data));
+    const url = `${BACKEND_URL}?action=submit&payload=${payload}`;
+
+    const response = await fetch(url, {
+      method: 'GET',
     });
 
-    // GAS responds with a 302. Extract the redirect destination.
-    // In opaque-redirect responses the url property holds it.
-    const redirectUrl = postResponse.url || postResponse.headers.get('Location');
-
-    let result;
-
-    if (redirectUrl && redirectUrl !== BACKEND_URL) {
-      // Step 2: GET the final URL — this one returns the JSON cleanly.
-      const getResponse = await fetch(redirectUrl, { method: 'GET' });
-      result = await getResponse.json();
-    } else {
-      // Fallback: try reading the post response body directly
-      // (works if GAS ever fixes its CORS handling)
-      const text = await postResponse.text();
-      result = JSON.parse(text);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
+
+    const result = await response.json();
 
     if (result.success) {
       showSuccess(result, data.email);
@@ -419,7 +395,7 @@ function stopLoadingAnimation() {
 }
 
 // ============================================================
-// SUCCESS & ERROR DISPLAY
+// SUCCESS & ERROR DISPLAY — unchanged
 // ============================================================
 
 function showSuccess(result, userEmail) {
