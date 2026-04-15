@@ -60,7 +60,7 @@
   }
 
   .topbar-logo-img {
-    height: 60px;
+    height: 50px;
     width: auto;
     display: block;
     /* No blend mode - logo PNG has white bg, topbar is white too */
@@ -73,7 +73,7 @@
   }
 
   .footer-logo-img {
-    height: 48px;
+    height: 50px;
     width: auto;
     display: block;
     border-radius: 6px;
@@ -881,7 +881,7 @@
   /* ── RESPONSIVE: TABLET (≤900px) ── */
   @media (max-width: 900px) {
     .topbar { padding: 14px 28px; }
-    .topbar-logo-img { height: 46px; }
+    .topbar-logo-img { height: 40px; }
     .hero { flex-direction: column; min-height: auto; }
     .hero-right-col { display: none; }
     .hero-content { padding: 96px 28px 60px 28px; max-width: 100%; }
@@ -889,14 +889,14 @@
     .hero-ivory-band { padding: 40px 36px; }
     .dimensions-strip { padding: 20px 28px; gap: 12px; flex-wrap: wrap; }
     .footer { padding: 24px 28px; }
-    .footer-logo-img { height: 40px; }
+    .footer-logo-img { height: 100px; }
     .geo-circle-1, .geo-circle-2, .geo-arc, .geo-dot-grid, .glow-orb { display: none; }
   }
 
   /* ── RESPONSIVE: MOBILE (≤600px) ── */
   @media (max-width: 600px) {
     .topbar { padding: 12px 20px; }
-    .topbar-logo-img { height: 38px; }
+    .topbar-logo-img { height: 40px; }
     .topbar-contact { display: none; }
     .hero-content { padding: 80px 20px 48px 20px; }
     .hero-headline { font-size: 30px; }
@@ -911,7 +911,7 @@
     .dim-tag { font-size: 10px; padding: 5px 12px; }
     .footer { padding: 20px; flex-direction: column; align-items: flex-start; gap: 14px; }
     .footer-left { gap: 10px; flex-wrap: wrap; }
-    .footer-logo-img { height: 32px; }
+    .footer-logo-img { height:40px; }
     .footer-copyright { font-size: 11px; }
   }
 
@@ -927,9 +927,9 @@
 <body>
 
 <!-- TOP BAR -->
-<header class="topbar">
+<header class="topbar" style="padding: 20px 48px;">
   <div class="topbar-logo">
-    <img src="media/Equinexuslogo-SoftIvory-Support.png" alt="Equinexus Partners" class="footer-logo" style="height:180px;width:auto;display:block;border-radius:6px;">
+    <img src="media/Equinexuslogo-SoftIvory-Support.png" alt="Equinexus Partners" class="topbar-logo-img" style="height:40px;width:auto;display:block;transform:scale(2);transform-origin:left center;">
   </div>
   <div class="topbar-contact">Mail us: <a href="mailto:info@equinexuspartners.com">info@equinexuspartners.com</a></div>
 </header>
@@ -1000,7 +1000,7 @@
 <!-- FOOTER -->
 <footer class="footer">
   <div class="footer-left">
-    <img src="media/Equinexuslogo deepindigo-Anchor.png" alt="Equinexus Partners" class="footer-logo" style="height:150px;width:auto;display:block;border-radius:6px;">
+    <img src="media/Logodeepindigo-Archor.png" alt="Equinexus Partners" class="footer-logo-img" style="height:30px;width:auto;display:block;transform:scale(2);transform-origin:left center;">
       <span class="footer-copyright">&copy; 2025 Equinexus Partners. All Rights Reserved.</span>
   </div>
   <div class="footer-links">
