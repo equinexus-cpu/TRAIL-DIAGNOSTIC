@@ -2,7 +2,7 @@
 // CONFIGURATION
 // ============================================================
 
-const BACKEND_URL = 'https://script.google.com/macros/s/AKfycbzPDV101S76LIshgxycOmLMTjhVP-a7BJKl1NMPVRwlYJnsE76mlELEOC89gn-cvUgl/exec';
+const BACKEND_URL = 'https://script.google.com/macros/s/AKfycbwDGNt5jhArXxL_u74UEZMUBfRAy4i6_wDIF-fHZS678XsrEsGbJ1V_ldsV2NF-Pl94/exec';
 
 // ============================================================
 // SURVEY DATA
@@ -110,6 +110,12 @@ const SCALE = [
 let currentSection = 0;
 const answers = {};
 
+// ── Submission guard ──────────────────────────────────────────
+// Prevents the survey firing twice if the user clicks submit
+// again while the first request is still in flight, or if the
+// browser fires a duplicate fetch.
+let isSubmitting = false;
+
 // ============================================================
 // BUILD SURVEY SECTIONS
 // ============================================================
@@ -174,13 +180,11 @@ function recordAnswer(qid, val) {
 // ============================================================
 
 function validateSection(sectionNum) {
-  const errorEl = document.getElementById(`err-${sectionNum}`);
-
   if (sectionNum === 0) {
-    const name = document.getElementById('f-name').value.trim();
+    const name  = document.getElementById('f-name').value.trim();
     const email = document.getElementById('f-email').value.trim();
-    const role = document.getElementById('f-role').value.trim();
-    const org = document.getElementById('f-orgName').value.trim();
+    const role  = document.getElementById('f-role').value.trim();
+    const org   = document.getElementById('f-orgName').value.trim();
 
     if (!name || !email || !role || !org) {
       showError(sectionNum, 'Please complete all required fields (Name, Email, Role, Organisation)');
@@ -198,7 +202,7 @@ function validateSection(sectionNum) {
   }
 
   if (sectionNum >= 1 && sectionNum <= 6) {
-    const dim = DIMENSIONS[sectionNum - 1];
+    const dim        = DIMENSIONS[sectionNum - 1];
     const unanswered = dim.questions.filter(q => !answers[q.id]);
 
     if (unanswered.length > 0) {
@@ -244,7 +248,7 @@ function hideError(sectionNum) {
 
 function updateProgress() {
   const total = 8;
-  const pct = (currentSection / (total - 1)) * 100;
+  const pct   = (currentSection / (total - 1)) * 100;
   document.getElementById('progressBar').style.width = pct + '%';
 
   for (let i = 0; i < 8; i++) {
@@ -276,46 +280,45 @@ function prevSection(from) {
 
 // ============================================================
 // SUBMIT SURVEY
-// ============================================================
-// WHY GET INSTEAD OF POST:
-// GAS doPost always issues a 302 redirect. Browsers block reading
-// the response after a cross-origin redirect — no amount of CORS
-// headers on doPost fixes this because the headers are on the
-// redirect target, not the initial response the browser checks.
-//
-// GAS doGet responds DIRECTLY with no redirect, so the browser
-// can read the response normally. We pass the survey payload as
-// a URL parameter. This is the standard workaround for GAS
-// cross-origin calls and requires no proxy.
+// Double-submission is prevented at two levels:
+//   1. isSubmitting flag — blocks any second call while the
+//      first fetch is in flight (covers button clicks and
+//      any programmatic retriggers).
+//   2. The button is immediately disabled and its text updated
+//      so the user gets clear visual feedback.
 // ============================================================
 
 async function submitSurvey() {
+
+  // ── Guard: block duplicate submissions ────────────────────
+  if (isSubmitting) return;
+  isSubmitting = true;
+
+  const submitBtn = document.getElementById('submitBtn');
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Generating report…';
+
   const data = {
-    name: document.getElementById('f-name').value.trim(),
-    email: document.getElementById('f-email').value.trim(),
-    role: document.getElementById('f-role').value.trim(),
-    orgName: document.getElementById('f-orgName').value.trim(),
-    country: document.getElementById('f-country').value.trim(),
-    sector: document.getElementById('f-sector').value,
-    orgSize: document.getElementById('f-orgSize').value,
+    name:      document.getElementById('f-name').value.trim(),
+    email:     document.getElementById('f-email').value.trim(),
+    role:      document.getElementById('f-role').value.trim(),
+    orgName:   document.getElementById('f-orgName').value.trim(),
+    country:   document.getElementById('f-country').value.trim(),
+    sector:    document.getElementById('f-sector').value,
+    orgSize:   document.getElementById('f-orgSize').value,
     challenge: document.getElementById('f-challenge').value.trim(),
-    answers: answers
+    answers:   answers
   };
 
   document.getElementById('loadingOverlay').classList.add('active');
-  document.getElementById('submitBtn').disabled = true;
   hideError(7);
   startLoadingAnimation();
 
   try {
-    // Encode the entire payload as a URL parameter.
-    // doGet in code.gs reads e.parameter.payload and processes it.
     const payload = encodeURIComponent(JSON.stringify(data));
-    const url = `${BACKEND_URL}?action=submit&payload=${payload}`;
+    const url     = `${BACKEND_URL}?action=submit&payload=${payload}`;
 
-    const response = await fetch(url, {
-      method: 'GET',
-    });
+    const response = await fetch(url, { method: 'GET' });
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -325,26 +328,32 @@ async function submitSurvey() {
 
     if (result.success) {
       showSuccess(result, data.email);
+      // Keep isSubmitting = true after success — report is done,
+      // there is no reason to allow resubmission.
     } else {
-      showErrorMessage(result.error || 'Unknown error occurred');
+      throw new Error(result.error || 'Unknown error occurred');
     }
 
   } catch (error) {
     console.error('Submission error:', error);
 
+    // On error, release the guard so the user can try again
+    isSubmitting = false;
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Generate My Report →';
+
     let errorMsg = 'We encountered an issue generating your report. ';
 
     if (error.message.includes('Failed to fetch')) {
-      errorMsg += 'Please check your internet connection and try again. ';
+      errorMsg += 'Please check your internet connection and try again.';
     } else if (error.message.includes('429')) {
-      errorMsg += 'Our AI service is processing many requests. Please wait 2 minutes and try again. ';
+      errorMsg += 'Our AI service is processing many requests. Please wait 2 minutes and try again.';
     } else if (error.message.includes('500')) {
-      errorMsg += 'Something went wrong on our end. Your responses are saved. Please try again or ';
+      errorMsg += 'Something went wrong on our end. Please try again or contact info@equinexuspartners.com.';
     } else {
-      errorMsg += 'Please try again in a few minutes, or ';
+      errorMsg += 'Please try again in a few minutes, or contact info@equinexuspartners.com if this persists.';
     }
 
-    errorMsg += 'contact delivery@equinexuspartners.com if this persists.';
     showErrorMessage(errorMsg);
 
   } finally {
@@ -357,7 +366,7 @@ async function submitSurvey() {
 // ============================================================
 
 function startLoadingAnimation() {
-  const steps = ['lstep-1', 'lstep-2', 'lstep-3', 'lstep-4', 'lstep-5', 'lstep-6', 'lstep-7'];
+  const steps    = ['lstep-1','lstep-2','lstep-3','lstep-4','lstep-5','lstep-6','lstep-7'];
   const messages = [
     'Saving your responses...',
     'Scoring six TRAIL dimensions...',
@@ -372,19 +381,14 @@ function startLoadingAnimation() {
   window.loadingInterval = setInterval(() => {
     if (stepIndex > 0) {
       const prevStep = document.getElementById(steps[stepIndex - 1]);
-      if (prevStep) {
-        prevStep.classList.add('done');
-        prevStep.classList.remove('active');
-      }
+      if (prevStep) { prevStep.classList.add('done'); prevStep.classList.remove('active'); }
     }
-
     if (stepIndex < steps.length) {
       const currentStep = document.getElementById(steps[stepIndex]);
       if (currentStep) currentStep.classList.add('active');
       document.getElementById('loadingStatus').textContent = messages[stepIndex];
       stepIndex++;
     }
-
     if (stepIndex >= steps.length) clearInterval(window.loadingInterval);
   }, 5000);
 }
@@ -395,22 +399,22 @@ function stopLoadingAnimation() {
 }
 
 // ============================================================
-// SUCCESS & ERROR DISPLAY — unchanged
+// SUCCESS & ERROR DISPLAY
 // ============================================================
 
 function showSuccess(result, userEmail) {
   document.querySelectorAll('.section-card').forEach(s => s.classList.remove('active'));
   document.getElementById('phaseIndicator').style.display = 'none';
 
-  document.getElementById('result-sdi').textContent = result.sdi || '—';
-  document.getElementById('result-level-label').textContent = result.debtLevel || 'Report Generated';
-  document.getElementById('result-arch').textContent = result.archetype ? `Archetype: ${result.archetype}` : '';
+  document.getElementById('result-sdi').textContent          = result.sdi || '—';
+  document.getElementById('result-level-label').textContent  = result.debtLevel || 'Report Generated';
+  document.getElementById('result-arch').textContent         = result.archetype ? `Archetype: ${result.archetype}` : '';
 
-  const emailMsg = `Your full report has been sent to ${userEmail} and is available at the link below.`;
-  document.getElementById('result-email-sent').textContent = emailMsg;
+  document.getElementById('result-email-sent').textContent =
+    `Your full report has been sent to ${userEmail} and is available at the link below.`;
 
-  const reportLink = document.getElementById('reportLink');
-  reportLink.href = result.reportUrl;
+  const reportLink    = document.getElementById('reportLink');
+  reportLink.href     = result.reportUrl;
   reportLink.textContent = 'View Your Full Report →';
 
   document.getElementById('resultCard').classList.add('active');
@@ -418,7 +422,6 @@ function showSuccess(result, userEmail) {
 }
 
 function showErrorMessage(message) {
-  document.getElementById('submitBtn').disabled = false;
   showError(7, message);
 }
 
